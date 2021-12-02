@@ -189,6 +189,10 @@ if __name__ == '__main__':
       args.imdb_name = "sim10k_train"
       args.imdbval_name = "sim10k_test"
       args.set_cfgs = ['ANCHOR_SCALES', '[8, 16, 32]', 'ANCHOR_RATIOS', '[0.5,1,2]', 'MAX_NUM_GT_BOXES', '20']
+  elif args.dataset == "kitti":
+      args.imdb_name = "kitti_train"
+      args.imdbval_name = "kitti_val"
+      args.set_cfgs = ['ANCHOR_SCALES', '[8, 16, 32]', 'ANCHOR_RATIOS', '[0.5,1,2]', 'MAX_NUM_GT_BOXES', '20']
   elif args.dataset == "city":
       args.imdb_name = "city_train"
       args.imdbval_name = "city_val"
@@ -414,11 +418,10 @@ if __name__ == '__main__':
             'loss_rcnn_cls': loss_rcnn_cls,
             'loss_rcnn_box': loss_rcnn_box
           }
-          logger.add_scalars("logs_s_{}/losses".format(args.session), info, (epoch - 1) * iters_per_epoch + step)
+          logger.add_scalars(f"logs_baseline_{args.dataset}_s_{args.session}/losses", info, (epoch - 1) * iters_per_epoch + step)
 
         loss_temp = 0
         start = time.time()
-
     
     save_name = os.path.join(output_dir, 'faster_rcnn_{}_{}_{}.pth'.format(args.session, epoch, step))
     save_checkpoint({
