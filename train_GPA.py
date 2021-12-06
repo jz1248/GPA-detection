@@ -275,6 +275,16 @@ if __name__ == '__main__':
         args.imdb_tgt_name = "kitti_train"
         args.imdbval_tgt_name = "kitti_val"
 
+    if args.dataset.startswith("albox_") and args.tgt_dataset.startswith("albox_"):
+        src_dataset_name = args.dataset[6:]
+        tgt_dataset_name = args.tgt_dataset[6:]
+
+        args.imdb_name = f"albox_{src_dataset_name}_to_{tgt_dataset_name}_src_train"
+        args.imdbval_name = f"albox_{src_dataset_name}_to_{tgt_dataset_name}_src_val"
+        args.set_cfgs = ['ANCHOR_SCALES', '[8, 16, 32]', 'ANCHOR_RATIOS', '[0.25,0.5,1,2,4]', 'MAX_NUM_GT_BOXES', '100']
+        args.imdb_tgt_name = f"albox_{src_dataset_name}_to_{tgt_dataset_name}_tgt_train"
+        args.imdbval_tgt_name = f"albox_{src_dataset_name}_to_{tgt_dataset_name}_tgt_val"
+
     args.cfg_file = "cfgs/{}_ls.yml".format(args.net) if args.large_scale else "cfgs/{}.yml".format(args.net)
 
     if args.cfg_file is not None:
@@ -420,6 +430,7 @@ if __name__ == '__main__':
     elif args.optimizer == "sgd":
         optimizer = torch.optim.SGD(params, momentum=cfg.TRAIN.MOMENTUM)
 
+    print(fasterRCNN)
     if args.cuda:
         fasterRCNN.cuda()
 

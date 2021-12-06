@@ -17,11 +17,13 @@ def prepare_roidb(imdb):
   each ground-truth box. The class with maximum overlap is also
   recorded.
   """
-
+  if imdb.name.startswith('albox'):
+    prepare_albox_roidb(imdb)
+    return
   roidb = imdb.roidb
   if not (imdb.name.startswith('coco')):
     sizes = [PIL.Image.open(imdb.image_path_at(i)).size
-         for i in range(imdb.num_images)]
+       for i in range(imdb.num_images)]
          
   for i in range(len(imdb.image_index)):
     roidb[i]['img_id'] = imdb.image_id_at(i)
@@ -29,6 +31,42 @@ def prepare_roidb(imdb):
     if not (imdb.name.startswith('coco')):
       roidb[i]['width'] = sizes[i][0]
       roidb[i]['height'] = sizes[i][1]
+    # need gt_overlaps as a dense array for argmax
+    gt_overlaps = roidb[i]['gt_overlaps'].toarray()
+    # max overlap with gt over classes (columns)
+    max_overlaps = gt_overlaps.max(axis=1)
+    # gt class that had the max overlap
+    max_classes = gt_overlaps.argmax(axis=1)
+    roidb[i]['max_classes'] = max_classes
+    roidb[i]['max_overlaps'] = max_overlaps
+    # sanity checks
+    # max overlap of 0 => class should be zero (background)
+    zero_inds = np.where(max_overlaps == 0)[0]
+    assert all(max_classes[zero_inds] == 0)
+    # max overlap > 0 => class should not be zero (must be a fg class)
+    nonzero_inds = np.where(max_overlaps > 0)[0]
+    assert all(max_classes[nonzero_inds] != 0)
+
+
+def prepare_albox_roidb(imdb):
+  """
+  prepare_roidb function for albox compatible roidb
+  Enrich the Albox imdb's roidb by adding some derived quantities that
+  are useful for training. This function precomputes the maximum
+  overlap, taken over ground-truth boxes, between each ROI and
+  each ground-truth box. The class with maximum overlap is also
+  recorded.
+  """
+
+  roidb = imdb.roidb
+  sizes = imdb.albox_dataset.get_image_sizes()
+
+  for i in range(len(imdb.roidb)):
+    roidb[i]['img_id'] = imdb.image_id_at(i)
+    roidb[i]['image'] = imdb.image_path_at(i)
+    # different from others. sizes are in HWC format
+    roidb[i]['width'] = sizes[i][1]
+    roidb[i]['height'] = sizes[i][0]
     # need gt_overlaps as a dense array for argmax
     gt_overlaps = roidb[i]['gt_overlaps'].toarray()
     # max overlap with gt over classes (columns)
@@ -106,6 +144,7 @@ def combined_roidb(imdb_names, training=True):
     return imdb.roidb
   
   def get_roidb(imdb_name):
+
     imdb = get_imdb(imdb_name)
     print('Loaded dataset `{:s}` for training'.format(imdb.name))
     imdb.set_proposal_method(cfg.TRAIN.PROPOSAL_METHOD)
@@ -123,6 +162,7 @@ def combined_roidb(imdb_names, training=True):
     imdb = datasets.imdb.imdb(imdb_names, tmp.classes)
   else:
     imdb = get_imdb(imdb_names)
+
 
   if training:
     roidb = filter_roidb(roidb)

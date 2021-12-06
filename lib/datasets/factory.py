@@ -10,6 +10,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from albox.datasets.adapters.transferlearning import DomainAdaptationDatasetAdapterForDetection
+from albox.datasets.dior import DIORDataset
+from albox.datasets.dota import DOTADatasetV2
+from albox.transforms import Compose, ToTensor, Resize
+
 __sets = {}
 from datasets.pascal_voc import pascal_voc
 from datasets.coco import coco
@@ -20,6 +25,7 @@ from datasets.city_multi import city_multi
 from datasets.fog_city import fog_city
 from datasets.kitti import kitti
 from datasets.vg import vg
+from datasets.albox_od import albox_od
 
 import numpy as np
 num_shot = 10
@@ -99,6 +105,26 @@ for split in ['train', 'val']:
     __sets[name] = (lambda split=split: kitti(split))
     tgt_name = 'kitti_{}_tgt'.format(split)
     __sets[tgt_name] = (lambda split=split, num_shot=num_shot: kitti(split, num_shot))
+
+# set up DOTA2 to DIOR <split>
+for split in ['train', 'val']:
+    print("Loading Albox datasets...")
+    # dataset path
+    DOTA_dataset_path = "/home/gfzx/gaofen/public/DOTA/V2_0"
+    DIOR_dataset_path = "/home/gfzx/gaofen/public/DIOR"
+    # DOTA_dataset_path = r"H:\Remote Sensing Datasets\DOTA\V2_0"
+    # DIOR_dataset_path = r"H:\Remote Sensing Datasets\DIOR"
+
+    source = DOTADatasetV2(DOTA_dataset_path, phase=split, verbose=True)
+    target = DIORDataset(DIOR_dataset_path, phase=split, verbose=True)
+    da_dataset = DomainAdaptationDatasetAdapterForDetection(source, target,
+                                                            work_dir="./DAWorkDir", verbose=True)
+    source_dataset = da_dataset.source()
+    target_dataset = da_dataset.target()
+    name = 'albox_dota2_to_dior_src_{}'.format(split)
+    __sets[name] = (lambda split=split: albox_od(source_dataset, f'dota2_to_dior_src_{split}'))
+    tgt_name = 'albox_dota2_to_dior_tgt_{}'.format(split)
+    __sets[tgt_name] = (lambda split=split, num_shot=num_shot: albox_od(target_dataset, f'dota2_to_dior_tgt_{split}', num_shot))
 
 def get_imdb(name):
   """Get an imdb (image database) by name."""
