@@ -59,7 +59,7 @@ def prepare_albox_roidb(imdb):
   """
 
   roidb = imdb.roidb
-  sizes = imdb.albox_dataset.get_image_sizes()
+  sizes = imdb.get_image_sizes()
 
   for i in range(len(imdb.roidb)):
     roidb[i]['img_id'] = imdb.image_id_at(i)

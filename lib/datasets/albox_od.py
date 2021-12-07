@@ -22,6 +22,8 @@ import scipy.io as sio
 import xml.etree.ElementTree as ET
 import pickle
 
+from tqdm import tqdm
+
 import albox.datasets.base
 from .imdb import imdb
 from .imdb import ROOT_DIR
@@ -71,6 +73,11 @@ class albox_od(imdb):
         self._salt = str(uuid.uuid4())
         self._comp_id = 'comp4'
 
+        self.origin_roidb = []
+        self.extended_roidb = []
+        self.extended_roi_entry_origin_index = []
+        self.image_sizes = None
+
         # PASCAL specific config options
         self.config = {'cleanup': True,
                        'use_salt': False,
@@ -83,7 +90,7 @@ class albox_od(imdb):
         """
         Return the absolute path to image i in the image sequence.
         """
-        return self.albox_dataset.get_image_path(i)
+        return self.albox_dataset.get_image_path(self._get_origin_image_index(i))
 
     def image_id_at(self, i):
         """
@@ -91,8 +98,43 @@ class albox_od(imdb):
         """
         return i
 
+    def _get_origin_image_index(self, i):
+        if self.roidb[i]['flipped']:
+            assert len(self.roidb) % 2 == 0
+            return self._get_origin_image_index(i-len(self.roidb)//2)
+        if i < len(self.origin_roidb):
+            # origin
+            return i
+        else:
+            # extended
+            return self.extended_roi_entry_origin_index[i-len(self.origin_roidb)]
+
     def _get_widths(self):
-        return [s[1] for s in self.albox_dataset.get_image_sizes()]
+        origin_widths = [s[1] for s in self.albox_dataset.get_image_sizes()]
+        all_width = []
+        all_width.extend(origin_widths)
+        all_width.extend([e["clip_region_width"] for e in self.extended_roidb])
+        return all_width
+
+    def append_flipped_images(self):
+        super().append_flipped_images()
+        if self.image_sizes is None:
+            self.get_image_sizes()
+        self.image_sizes = self.image_sizes * 2
+
+    def get_image_sizes(self):
+        if self.image_sizes is None:
+            origin_sizes = self.albox_dataset.get_image_sizes()
+            all_sizes = []
+            all_sizes.extend(origin_sizes)
+            all_sizes.extend([(e["clip_region_height"], e["clip_region_width"], origin_sizes[self._get_origin_image_index(i)][2])
+                          for i, e in enumerate(self.extended_roidb)])
+            self.image_sizes = all_sizes
+        return self.image_sizes
+
+    @property
+    def num_images(self):
+        return len(self.roidb)
 
     def gt_roidb(self):
         """
@@ -121,20 +163,33 @@ class albox_od(imdb):
 
         assert len(image_sizes) == len(gt_roidb)
 
+        extended_roidb, extended_roi_entry_origin_index = self._clip_huge_images(gt_roidb, image_sizes, 800)
+        print('Clip check finished.')
 
+        self.origin_roidb = gt_roidb
+        self.extended_roidb = extended_roidb
+        self.extended_roi_entry_origin_index = extended_roi_entry_origin_index
 
-        return gt_roidb
+        all_roidb = []
+        all_roidb.extend(self.origin_roidb)
+        all_roidb.extend(self.extended_roidb)
+        return all_roidb
 
     def _clip_huge_images(self, gt_roidb, image_sizes, thresh):
         new_roi_entries = []
-        for i, (img_size, roi) in enumerate(zip(image_sizes, gt_roidb)):
+        extended_roi_entry_origin_index = []    # 扩展的 roi entry 所对应的原图像的序号
+        for i, (img_size, roi) in tqdm(enumerate(zip(image_sizes, gt_roidb)), desc='Checking if need clipping'):
             h, w, c = img_size
             if (min(h, w) > thresh):
                 # need clip
                 roi_entries = self._clip_image_roi_entry(img_size, roi, thresh)
                 new_roi_entries.extend(roi_entries)
+                extended_roi_entry_origin_index.extend([i]*len(roi_entries))
+
+        return new_roi_entries, extended_roi_entry_origin_index
 
     def _clip_image_roi_entry(self, img_size, roi_entry, thresh) -> List[Dict[str, Any]]:
+        extended_roi_entries = []
         h, w, c = img_size
         size_h = int(h / (h // thresh + 1))
         size_w = int(w / (w // thresh + 1))
@@ -152,13 +207,60 @@ class albox_od(imdb):
                 regions.append((cut_w[j], cut_h[i], cut_w[j+1], cut_h[i+1]))
 
         # filter boxes
-        origin_boxes = roi_entry["boxes"]
+        origin_boxes = roi_entry["boxes"].copy()
+        origin_label = roi_entry["gt_classes"].copy()
+        origin_ishards = roi_entry["gt_ishard"].copy()
+        origin_seg_areas = roi_entry["seg_areas"].copy()
         for region in regions:
-            filtered_boxes = []
-            for box in origin_boxes:
+            left, top = region[0], region[1]
+            filtered_indices = []
+            for i, box in enumerate(origin_boxes):
                 if _is_box_in_region(box, region):
-                    filtered_boxes.append(box.copy())
+                    filtered_indices.append(i)
+            if len(filtered_indices) == 0:
+                continue
+            filtered_indices = np.array(filtered_indices)
+            filtered_boxes = origin_boxes[filtered_indices, :]
 
+            # reassign coordinates
+            oldx1 = filtered_boxes[:, 0].copy()
+            oldy1 = filtered_boxes[:, 1].copy()
+            oldx2 = filtered_boxes[:, 2].copy()
+            oldy2 = filtered_boxes[:, 3].copy()
+            filtered_boxes[:, 0] = oldx1 - left
+            filtered_boxes[:, 1] = oldy1 - top
+            filtered_boxes[:, 2] = oldx2 - left
+            filtered_boxes[:, 3] = oldy2 - top
+
+            # # calculate filpped boxes
+            # flipped_boxes = filtered_boxes.copy()
+            # oldx1 = flipped_boxes[:, 0].copy()
+            # oldx2 = flipped_boxes[:, 2].copy()
+            # flipped_boxes[:, 0] = (region[2] - region[0]) - oldx2 - 1
+            # flipped_boxes[:, 2] = (region[2] - region[0]) - oldx1 - 1
+
+            filtered_label = origin_label[filtered_indices]
+            filtered_ishards = origin_ishards[filtered_indices]
+            filtered_seg_areas = origin_seg_areas[filtered_indices]
+            num_objs = len(filtered_label)
+            filtered_overlaps = np.zeros((num_objs, self.num_classes), dtype=np.float32)
+            for ix, cls in enumerate(filtered_label):
+                filtered_overlaps[ix, cls] = 1.0
+            filtered_overlaps = scipy.sparse.csr_matrix(filtered_overlaps)
+
+            extended_roi_entries.append({'boxes': filtered_boxes,
+                          'gt_classes': filtered_label,
+                          'gt_ishard': filtered_ishards,
+                          'gt_overlaps': filtered_overlaps,
+                          'flipped': False,
+                          'clip': True,
+                          'clip_region': region,
+                          'clip_region_width': region[2] - region[0],
+                          'clip_region_height': region[3] - region[1],
+                          # 'flipped_boxes': flipped_boxes,
+                          'seg_areas': filtered_seg_areas})
+
+        return extended_roi_entries
 
     def _convert_albox_annotations_to_roidb(self, annotations) -> List:
         roidb = []
@@ -178,6 +280,7 @@ class albox_od(imdb):
                           'gt_ishard': ishards,
                           'gt_overlaps': overlaps,
                           'flipped': False,
+                          'clip': False,
                           'seg_areas': seg_areas})
         return roidb
 
