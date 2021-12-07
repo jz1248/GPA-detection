@@ -12,6 +12,7 @@ import xml.dom.minidom as minidom
 import os
 # import PIL
 import numpy as np
+import podm.podm
 import scipy.sparse
 import subprocess
 import math
@@ -26,6 +27,9 @@ from .imdb import imdb
 from .imdb import ROOT_DIR
 from . import ds_utils
 from .voc_eval import voc_eval
+
+from podm.podm import get_pascal_voc_metrics
+from podm.podm import BoundingBox, MetricPerClass
 
 from typing import List
 
@@ -45,6 +49,7 @@ except NameError:
 # define the cityscapes dataset for vehicle detection
 class albox_od(imdb):
     def __init__(self, albox_dataset: AlboxDataset, image_set, num_shot=None):
+        print(albox_dataset)
         imdb.__init__(self, 'albox_' + image_set)
         self.albox_dataset = albox_dataset
         self.num_shot = num_shot
@@ -137,3 +142,46 @@ class albox_od(imdb):
     #         image_index = image_index[:self.num_shot]
     #
     #     return image_index
+
+    def evaluate_detections(self, all_boxes, output_dir, epoch = 10):
+        gt_boxes: List[BoundingBox] = []
+        pred_boxes: List[BoundingBox] = []
+
+        # process prediction boxes
+        for i in range(1, self.num_classes):
+            label = self.classes[i]
+            for idx_img, pred_mat in enumerate(all_boxes[i]):
+                num_pred_boxes = pred_mat.shape[0]
+                for idx_box in range(num_pred_boxes):
+                    score = pred_mat[idx_box, 4]
+                    x1, y1, x2, y2 = pred_mat[idx_box, :4]
+                    bbox = BoundingBox(str(idx_img), label, x1, y1, x2, y2, score)
+                    pred_boxes.append(bbox)
+
+        roidb = self.roidb
+        for idx_img, anno in enumerate(roidb):
+            boxes = anno['boxes']
+            gt_classes = anno['gt_classes']
+            num_gt_boxes = gt_classes.size
+            for idx_gt_box in range(num_gt_boxes):
+                assert boxes[idx_gt_box].size == 4
+                label = self.classes[gt_classes[idx_gt_box]]
+                x1, y1, x2, y2 = boxes[idx_gt_box]
+                gt_bbox = BoundingBox(str(idx_img), label, x1, y1, x2, y2)
+                gt_boxes.append(gt_bbox)
+
+        result = get_pascal_voc_metrics(gt_boxes, pred_boxes)
+        result_path = os.path.join(output_dir, f"eval_result_epoch_{epoch}.pkl")
+        with open(result_path, 'wb') as f:
+            pickle.dump(result, f)
+
+        ap_dict = dict()
+        map = MetricPerClass.get_mAP(result)
+        for label, m in result.items():
+            ap_dict[label] = m.ap
+
+        print(f"----Evaluation result for epoch {epoch}-----")
+        for k, v in ap_dict.items():
+            print(f'AP for {k}: \t{v}')
+        print(f'mAP: {map}')
+        print("---------End evaluation result---------")

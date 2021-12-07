@@ -30,6 +30,8 @@ class AlboxBaseObjectDetectionDataset(Dataset, metaclass=abc.ABCMeta):
         # super().__init__(root, transforms)
         self.root = root
         self.transforms = transforms
+        self._repr_indent = 4
+
         self.bbox_type = bbox_type
         self.classes = classes
         self._verbose = verbose

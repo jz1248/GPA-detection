@@ -18,4 +18,4 @@ class RandomScale(AlboxBaseObjectDetectionTransform):
         self.max_scale = max_scale
 
     def __call__(self, img: Any, target: ODTarget) -> ODDatasetItem:
-        return super().__call__(img, target)
+        raise NotImplementedError()

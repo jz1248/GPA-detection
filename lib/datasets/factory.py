@@ -117,14 +117,24 @@ for split in ['train', 'val']:
 
     source = DOTADatasetV2(DOTA_dataset_path, phase=split, verbose=True)
     target = DIORDataset(DIOR_dataset_path, phase=split, verbose=True)
-    da_dataset = DomainAdaptationDatasetAdapterForDetection(source, target,
+    classes_map_dict = {
+        'plane': 'airplane',
+        'airport': 'airport',
+        'bridge': 'bridge',
+        'harbor': 'harbor',
+        'ship': 'ship',
+        'storage-tank': 'storagetank',
+        'basketball-court': 'basketballcourt',
+        'tennis-court': 'tenniscourt',
+    }
+    da_dataset = DomainAdaptationDatasetAdapterForDetection(source, target, classes_map_dict=classes_map_dict,
                                                             work_dir="./DAWorkDir", verbose=True)
     source_dataset = da_dataset.source()
     target_dataset = da_dataset.target()
     name = 'albox_dota2_to_dior_src_{}'.format(split)
     __sets[name] = (lambda split=split: albox_od(source_dataset, f'dota2_to_dior_src_{split}'))
     tgt_name = 'albox_dota2_to_dior_tgt_{}'.format(split)
-    __sets[tgt_name] = (lambda split=split, num_shot=num_shot: albox_od(target_dataset, f'dota2_to_dior_tgt_{split}', num_shot))
+    __sets[tgt_name] = (lambda split=split, num_shot=num_shot: albox_od(target_dataset, f'dota2_to_dior_tgt_{split}', max(num_shot, 300)))
 
 def get_imdb(name):
   """Get an imdb (image database) by name."""

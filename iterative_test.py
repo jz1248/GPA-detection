@@ -5,6 +5,9 @@ import numpy as np
 
 parser = argparse.ArgumentParser(description='Train a Fast R-CNN network')
 parser.add_argument('--dataset', dest='dataset',
+                    help='source domain dataset',
+                    default='pascal_voc', type=str)
+parser.add_argument('--tgt_dataset', dest='tgt_dataset',
                     help='target domain dataset',
                     default='pascal_voc', type=str)
 parser.add_argument('--model_config', dest='model_config',
@@ -47,15 +50,12 @@ args = parser.parse_args()
 
 for epoch in range(args.start_epoch, args.end_epoch + 1):
     if args.test_mode == 'GPA':
-        template = 'CUDA_VISIBLE_DEVICES={} python test_GPA.py --dataset {} --net {} --load_dir {} --model_config {} --checksession {} --checkepoch {} --checkpoint {} --cuda --pos_r {}'
-        cmd = template.format(args.gpu_id, args.dataset, args.net, args.load_dir, args.model_config, args.checksession,
+        template = 'CUDA_VISIBLE_DEVICES={} python test_GPA.py --dataset {} --tgt_dataset {} --net {} --load_dir {} --model_config {} --checksession {} --checkepoch {} --checkpoint {} --cuda --pos_r {}'
+        cmd = template.format(args.gpu_id, args.dataset, args.tgt_dataset, args.net, args.load_dir, args.model_config, args.checksession,
                               epoch, args.checkpoint, args.pos_r)
     else:
-        template = 'CUDA_VISIBLE_DEVICES={} python test_baseline.py --dataset {} --net {} --load_dir {} --model_config {} --checksession {} --checkepoch {} --checkpoint {} --cuda'
-        cmd = template.format(args.gpu_id, args.dataset, args.net, args.load_dir, args.model_config, args.checksession,
+        template = 'CUDA_VISIBLE_DEVICES={} python test_baseline.py --dataset {} --tgt_dataset {} --net {} --load_dir {} --model_config {} --checksession {} --checkepoch {} --checkpoint {} --cuda'
+        cmd = template.format(args.gpu_id, args.dataset, args.tgt_dataset, args.net, args.load_dir, args.model_config, args.checksession,
                               epoch, args.checkpoint)
     os.system(cmd)
     print (cmd)
-
-end_cmd = 'watch nvidia-smi'
-os.system(end_cmd)

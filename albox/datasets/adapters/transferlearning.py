@@ -194,16 +194,19 @@ class DomainAdaptationDatasetAdapterForDetection:
         if classes_map_dict is not None:
             # TODO: check if dict is 1v1 map
             assert len(classes_map_dict) > 0
-            assert classes_map_dict.keys() in source, "All keys must be source dataset classes."
-            assert classes_map_dict.values() in target, "All values must be target dataset classes."
+            for k in classes_map_dict.keys():
+                assert k in source, "All keys must be source dataset classes."
+            for v in classes_map_dict.values():
+                assert v in target, "All values must be target dataset classes."
 
             source_classes, target_classes = [], []
             for k, v in classes_map_dict.items():
+                # common_class_label = f"src_{k}_tgt_{v}"
                 source_classes.append(k)
                 target_classes.append(v)
 
             source_classes.sort()
-            target_classes.sort()
+            target_classes = [classes_map_dict[l] for l in source_classes]
             if source_classes[0] != "__background__":
                 source_classes.insert(0, "__background__")
             if target_classes[0] != "__background__":

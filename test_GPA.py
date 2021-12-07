@@ -49,6 +49,9 @@ def parse_args():
     parser.add_argument('--dataset', dest='dataset',
                         help='target domain dataset',
                         default='pascal_voc', type=str)
+    parser.add_argument('--tgt_dataset', dest='tgt_dataset',
+                        help='target domain dataset',
+                        default='pascal_voc', type=str)
     parser.add_argument('--model_config', dest='model_config',
                         help='the config of model',
                         default='pascal_voc', type=str)
@@ -154,6 +157,14 @@ if __name__ == '__main__':
         args.imdbval_name = "vg_150-50-50_minival"
         args.set_cfgs = ['ANCHOR_SCALES', '[4, 8, 16, 32]', 'ANCHOR_RATIOS', '[0.5,1,2]']
 
+    if args.dataset.startswith("albox_") and args.tgt_dataset.startswith("albox_"):
+        src_dataset_name = args.dataset[6:]
+        tgt_dataset_name = args.tgt_dataset[6:]
+
+        args.imdb_name = f"albox_{src_dataset_name}_to_{tgt_dataset_name}_tgt_train"
+        args.imdbval_name = f"albox_{src_dataset_name}_to_{tgt_dataset_name}_tgt_val"
+        args.set_cfgs = ['ANCHOR_SCALES', '[8, 16, 32]', 'ANCHOR_RATIOS', '[0.25,0.5,1,2,4]', 'MAX_NUM_GT_BOXES', '100']
+
     args.cfg_file = "cfgs/{}_ls.yml".format(args.net) if args.large_scale else "cfgs/{}.yml".format(args.net)
 
     if args.cfg_file is not None:
@@ -165,8 +176,8 @@ if __name__ == '__main__':
     print('RPN_FG_FRACTION:', cfg.TRAIN.RPN_FG_FRACTION)
 
 
-    print('Using config:')
-    pprint.pprint(cfg)
+    # print('Using config:')
+    # pprint.pprint(cfg)
 
     cfg.TRAIN.USE_FLIPPED = False
     imdb, roidb, ratio_list, ratio_index = combined_roidb(args.imdbval_name, False)
@@ -238,7 +249,7 @@ if __name__ == '__main__':
         thresh = 0.0
 
     save_name = args.model_config
-    num_images = len(imdb.image_index)
+    num_images = len(imdb.roidb)
     all_boxes = [[[] for _ in xrange(num_images)]
                  for _ in xrange(imdb.num_classes)]
 
@@ -252,7 +263,7 @@ if __name__ == '__main__':
     data_iter = iter(dataloader)
 
     _t = {'im_detect': time.time(), 'misc': time.time()}
-    det_file = os.path.join(output_dir, 'detections.pkl')
+    det_file = os.path.join(output_dir, f'detections{args.checkepoch}.pkl')
 
     fasterRCNN.eval()
     empty_array = np.transpose(np.array([[], [], [], [], []]), (1, 0))
@@ -351,7 +362,7 @@ if __name__ == '__main__':
     with open(det_file, 'wb') as f:
         pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
 
-    print('Evaluating detections')
+    print('Evaluating detections...')
     imdb.evaluate_detections(all_boxes, output_dir, epoch = args.checkepoch)
 
     end = time.time()
