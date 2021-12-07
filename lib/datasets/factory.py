@@ -134,7 +134,8 @@ for split in ['train', 'val']:
     name = 'albox_dota2_to_dior_src_{}'.format(split)
     __sets[name] = (lambda split=split: albox_od(source_dataset, f'dota2_to_dior_src_{split}'))
     tgt_name = 'albox_dota2_to_dior_tgt_{}'.format(split)
-    __sets[tgt_name] = (lambda split=split, num_shot=num_shot: albox_od(target_dataset, f'dota2_to_dior_tgt_{split}', max(num_shot, 300)))
+    # __sets[tgt_name] = (lambda split=split, num_shot=num_shot: albox_od(target_dataset, f'dota2_to_dior_tgt_{split}', num_shot))
+    __sets[tgt_name] = (lambda split=split, num_shot=num_shot: albox_od(target_dataset, f'dota2_to_dior_tgt_{split}'))
 
 def get_imdb(name):
   """Get an imdb (image database) by name."""

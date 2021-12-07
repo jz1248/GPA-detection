@@ -110,7 +110,7 @@ class DOTADatasetV2(AlboxBaseObjectDetectionDataset):
 
     def _load_image(self, index: int):
         # load image
-        img_path = img_path = self.get_image_path(index)
+        img_path = self.get_image_path(index)
         img = cv2.imread(img_path)
         img = img[..., ::-1].copy()    # convert BGR to RGB
         return img

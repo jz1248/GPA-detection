@@ -31,7 +31,7 @@ from .voc_eval import voc_eval
 from podm.podm import get_pascal_voc_metrics
 from podm.podm import BoundingBox, MetricPerClass
 
-from typing import List
+from typing import List, Dict, Any
 
 AlboxDataset = albox.datasets.base.AlboxBaseObjectDetectionDataset
 
@@ -47,6 +47,12 @@ except NameError:
 # <<<< obsolete
 
 # define the cityscapes dataset for vehicle detection
+def _is_box_in_region(box, region):
+    x1, y1, x2, y2 = box
+    l, t, r, b = region
+    return l <= x1 and t <= y1 and x2 < r and y2 < b
+
+
 class albox_od(imdb):
     def __init__(self, albox_dataset: AlboxDataset, image_set, num_shot=None):
         print(albox_dataset)
@@ -105,15 +111,57 @@ class albox_od(imdb):
         #     print('{} gt roidb loaded from {}'.format(self.name, cache_file))
         #     return roidb
         all_annotations = self.albox_dataset.get_all_annotations()
+        image_sizes = self.albox_dataset.get_image_sizes()
 
+        if self.num_shot is not None:
+            all_annotations = all_annotations[:self.num_shot]
+        if self.num_shot is not None:
+            image_sizes = image_sizes[:self.num_shot]
         gt_roidb = self._convert_albox_annotations_to_roidb(all_annotations)
+
+        assert len(image_sizes) == len(gt_roidb)
+
+
 
         return gt_roidb
 
+    def _clip_huge_images(self, gt_roidb, image_sizes, thresh):
+        new_roi_entries = []
+        for i, (img_size, roi) in enumerate(zip(image_sizes, gt_roidb)):
+            h, w, c = img_size
+            if (min(h, w) > thresh):
+                # need clip
+                roi_entries = self._clip_image_roi_entry(img_size, roi, thresh)
+                new_roi_entries.extend(roi_entries)
+
+    def _clip_image_roi_entry(self, img_size, roi_entry, thresh) -> List[Dict[str, Any]]:
+        h, w, c = img_size
+        size_h = int(h / (h // thresh + 1))
+        size_w = int(w / (w // thresh + 1))
+
+        # make cut points
+        cut_h = list(range(0, h - size_h + 1, size_h))
+        cut_w = list(range(0, w - size_w + 1, size_w))
+
+        # make region
+        cut_h.append(h)
+        cut_w.append(w)
+        regions = []
+        for i in range(len(cut_h) - 1):
+            for j in range(len(cut_w) - 1):
+                regions.append((cut_w[j], cut_h[i], cut_w[j+1], cut_h[i+1]))
+
+        # filter boxes
+        origin_boxes = roi_entry["boxes"]
+        for region in regions:
+            filtered_boxes = []
+            for box in origin_boxes:
+                if _is_box_in_region(box, region):
+                    filtered_boxes.append(box.copy())
+
+
     def _convert_albox_annotations_to_roidb(self, annotations) -> List:
         roidb = []
-        if self.num_shot is not None:
-            annotations = annotations[:self.num_shot]
         for anno in annotations:
             num_objs = len(anno["labels"])
             boxes = anno["boxes"].int().numpy()
